@@ -13,7 +13,6 @@ else:
     to_learn = data.to_dict(orient="records")
 
 
-
 def new_word():
     global flip_timer, current_word, to_learn
     window.after_cancel(flip_timer)
@@ -42,9 +41,6 @@ window = Tk()
 window.title("Flash card")
 window.config(padx=50, pady=50, bg=BACKGROUND_COLOR)
 flip_timer = window.after(3000, func=flip_card)
-
-
-
 
 canvas = Canvas(width=800, height=526, bg=BACKGROUND_COLOR, highlightthickness=0)
 fr_image = PhotoImage(file="images/card_front.png")
