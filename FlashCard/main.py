@@ -32,10 +32,10 @@ def flip_card():
 
 def create_to_learn():
     global to_learn
-    to_learn_list = to_learn.remove(current_word)
+    to_learn.remove(current_word)
     new_word()
-    to_learn = pandas.DataFrame(to_learn_list)
-    to_learn.to_csv("data/to_learn.csv", index=False)
+    to_learn_list = pandas.DataFrame(to_learn)
+    to_learn_list.to_csv("data/to_learn.csv", index=False)
 
 
 window = Tk()
