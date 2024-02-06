@@ -2,20 +2,34 @@ from tkinter import *
 from tkinter import messagebox
 from random import randint, choice, shuffle
 import pyperclip
+import json
 
 def save():
-    website = web_entry.get()
+    website = web_entry.get().lower()
     user = user_entry.get()
     psw = psw_entry.get()
+    new_data = {
+        website: {
+            "email": user,
+            "password": psw,
+        },
+    }
 
     if len(website) == 0 or len(psw) == 0:
         messagebox.showinfo(message="Please don't leave any field empty!")
     else:
-        is_ok = messagebox.askokcancel(title=website, message=f"These are the details you entered: \nEmail/Username: {user}\n"
-                                                  f"Password: {psw}\n Is it ok to save?")
-        if is_ok:
-            with open("data.txt", "w") as file:
-                file.write(f"{website} | {user} | {psw}\n")
+        try:
+            with open("data.json", "r") as data_file:
+                data = json.load(data_file)
+        except FileNotFoundError:
+            with open("data.json", "w") as data_file:
+                json.dump(new_data, data_file, indent=4)
+        else:
+            data.update(new_data)
+
+            with open("data.json", "w") as data_file:
+                json.dump(data, data_file, indent=4)
+        finally:
             web_entry.delete(0, END)
             user_entry.delete(0, END)
             user_entry.insert(0, "caomancomeon@gmail.com")
@@ -37,6 +51,23 @@ def generate_psw():
     psw_entry.insert(0, password)
     pyperclip.copy(password)
 
+def find_website():
+    web = web_entry.get().lower()
+    try:
+        with open("data.json") as data_file:
+            data = json.load(data_file)
+
+    except FileNotFoundError:
+        messagebox.showinfo(title="Error", message="No data file found")
+    else:
+        if web in data:
+            messagebox.showinfo(title=web,
+                                message=f"Email/Username: {data[web]["email"]}\nPassword: {data[web]["password"]}")
+        else:
+            messagebox.showinfo(message=f"No details for the {web} you entered")
+
+
+
 # UI
 window = Tk()
 window.title("Password Manager")
@@ -48,8 +79,8 @@ canvas.create_image(100, 100, image=logo)
 canvas.grid(column=1, row=0)
 
 # Entry
-web_entry = Entry(width=38)
-web_entry.grid(column=1, row=1, columnspan=2)
+web_entry = Entry(width=21)
+web_entry.grid(column=1, row=1)
 web_entry.focus()
 psw_entry = Entry(width=21)
 psw_entry.grid(column=1, row=3)
@@ -62,6 +93,8 @@ psw_button = Button(text="Generate Password", command=generate_psw)
 psw_button.grid(column=2, row=3)
 add_button = Button(text="Add", width=36, command=save)
 add_button.grid(column=1, row=4, columnspan=2)
+search_button = Button(text="Search", width=13, command=find_website)
+search_button.grid(column=2, row=1)
 
 # Label
 web_label = Label(text="Website:")
