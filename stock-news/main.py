@@ -7,6 +7,7 @@ STOCK = "TSLA"
 COMPANY_NAME = "Tesla Inc"
 account_sid = os.environ.get("account_sid")
 auth_token = os.environ.get("auth_token")
+send_to =os.environ.get("phone_number")
 
 
 def get_fluctuate():
@@ -19,7 +20,7 @@ def get_fluctuate():
     }
     stock_response = requests.get(url="https://www.alphavantage.co/query", params=stock_parameters)
     stock_response.raise_for_status()
-    stock_data = list(stock_response.json()['Time Series (Daily)'].values())
+    stock_data = [value for (key, value) in stock_response.json()['Time Series (Daily)'].items()]
     yesterday_close = float(stock_data[0]['4. close'])
     before_close = float(stock_data[1]['4. close'])
     return round((yesterday_close - before_close)/yesterday_close, 4)
@@ -51,5 +52,5 @@ if abs(fluctuation) > 0.05:
     message = client.messages.create(
         body=f"TSLA: {symbol}{abs(fluctuation)}\n {get_news()}",
         from_='+18329240661',
-        to='+8613128840500'
+        to=send_to
     )
