@@ -24,20 +24,20 @@ headers = {
     'X-USER-TOKEN': TOKEN
 }
 
-today = datetime(year=2024, month=2, day=10)
+today = datetime.now()
 # response = requests.post(url=graph_endpoint, json=graph_config, headers=headers)
 # print(response.text)
 post_value = {
     'date': today.strftime("%Y%m%d"),
-    'quantity': "120",
+    'quantity': input("How long have you been coding today by minutes? "),
 }
 
 put_value = {
     'quantity': "120",
 }
-# response = requests.post(url=f"{graph_endpoint}/{GRAPH_ID}", json=post_value, headers=headers)
-# print(response.text)
+response = requests.post(url=f"{graph_endpoint}/{GRAPH_ID}", json=post_value, headers=headers)
+print(response.text)
 # response = requests.put(url=f"{graph_endpoint}/{GRAPH_ID}/{today.strftime('%Y%m%d')}", json=put_value, headers=headers)
 # print(response.text)
-response = requests.delete(url=f"{pixela_endpoint}/{USERNAME}/graphs/{GRAPH_ID}/{today.strftime('%Y%m%d')}", headers=headers)
-print(response.text)
+# response = requests.delete(url=f"{pixela_endpoint}/{USERNAME}/graphs/{GRAPH_ID}/{today.strftime('%Y%m%d')}", headers=headers)
+# print(response.text)
