@@ -2,10 +2,12 @@ import pandas
 from datetime import datetime
 from random import randint
 import smtplib
+import os
 
 now = datetime.now()
 month = now.month
 day = now.day
+password = os.environ.get("password")
 
 data = pandas.read_csv("birthdays.csv")
 birthdays = data.to_dict(orient="records")
@@ -17,7 +19,7 @@ for person in birthday_today:
         new_content = content.replace("[NAME]", f"{person['name']}")
     with smtplib.SMTP("smtp.163.com", 25) as connection:
         connection.starttls()
-        connection.login(user="caomancomeon@163.com", password="TJWJFXASKQGBHELS")
+        connection.login(user="caomancomeon@163.com", password=password)
         connection.sendmail(from_addr="caomancomeon@163.com",
                             to_addrs=person["email"],
                             msg=f"Subject:Happy Birthday!\n\n{new_content}")
