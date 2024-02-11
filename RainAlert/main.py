@@ -7,6 +7,7 @@ my_longitude = 113.570438
 my_latitude = 30.968713
 account_sid = os.environ.get("account_sid")
 auth_token = os.environ.get("auth_token")
+send_to = os.environ.get("phone_number")
 
 parameters= {
     "lat": my_latitude,
@@ -28,6 +29,6 @@ if will_rain:
     message = client.messages.create(
         body="It's going to rain. Bring an umbrella☂︎",
         from_='+18329240661',
-        to='+8613128840500'
+        to=send_to
     )
     print(message.status)
