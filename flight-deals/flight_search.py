@@ -46,7 +46,12 @@ class FlightSearch:
         }
         response = requests.get(url=f"{SERVER}{flight_endpoint}", params=search_params, headers=HEADERS)
         response.raise_for_status()
-        data = response.json()["data"]
-        return data
+        try:
+            data = response.json()["data"]
+        except IndexError:
+            print(f"There's no direct flight to {iata_code}")
+            return None
+        else:
+            return data
 
 
