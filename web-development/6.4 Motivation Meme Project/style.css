@@ -5,18 +5,14 @@ div {
     width: 50%;
     margin-left: 25%;
     margin-top: 10%;
+    color: white;
+    text-align: center
 }
 img {
     width: 100%;
     border: 5px white solid
 }
-p{
-    color: white;
-    text-align: center
-}
 h1 {
-    color: white;
     text-transform: uppercase;
-    text-align: center;
     font-family:"Libre Baskerville", serif;
 }
