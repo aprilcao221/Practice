@@ -1,10 +1,13 @@
+import os
+
 import requests
 from bs4 import BeautifulSoup
 import smtplib
+import os
 
 PRODUCT = "https://www.amazon.com/dp/B075CYMYK6?ref_=cm_sw_r_cp_ud_ct_FM9M699VKHTT47YD50Q6&th=1"
 TARGET = 100
-PSW = "[APPkey]"
+PSW = os.environ["appkey"]
 header = {
     'User-Agent': "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     'Accept-Language': "en,zh-CN;q=0.9,zh;q=0.8"
