@@ -1,19 +1,47 @@
 from flask import Flask
-import random
+
 
 app = Flask(__name__)
 
+def make_bold(function):
+    def wrapper_function():
+        text = function()
+        return f"<b>{text}</b>"
+    return wrapper_function
+
+def make_emphasis(function):
+    def wrapper_function():
+        text = function()
+        return f"<em>{text}</em>"
+    return wrapper_function
+
+def make_underline(function):
+    def wrapper_function():
+        text = function()
+        return f"<u>{text}</u>"
+    return wrapper_function
 
 @app.route("/")
 def hello_world():
-    return "<p>Hello, World!</p>"
+    return ('<h1 style="text-align: center">Hello, World!</h1>'
+            '<p>This is a paragrabh</p>'
+            '<img src="https://media.giphy.com/media/phJ6eMRFYI6CQ/giphy.gif?cid=790b7611jds0r8ycklemmxw1lau8wa5vj2w8k32cv7czs7d5&ep=v1_gifs_search&rid=giphy.gif&ct=g" '
+            'width=200>'
+            )
 
 @app.route("/bye")
+@make_bold
+@make_emphasis
+@make_underline
 def say_bye():
     return "bye"
 
+@app.route("/<path:name>/<int:number>")
+def greet(name, number):
+    return f"Hello there {name}, you are {number} year old!"
+
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
 
 
 # def add(n1, n2):
