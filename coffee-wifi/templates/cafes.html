@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Cafes{% endblock %}
+{% block content %}
+<h1 class="my-4">All cafes</h1>
+<table class="table table-hover table-dark table-striped" >
+    <thead>
+        <tr>
+            <th scope="col">Cafe Name</th>
+            <th scope="col">Location</th>
+            <th scope="col">Open</th>
+            <th scope="col">Close</th>
+            <th scope="col">Coffee</th>
+            <th scope="col">Wifi</th>
+            <th scope="col">Power</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for cafe in cafes: %}
+    <tr>
+        {% for i in range(0, 7): %}
+        {% if i == 1: %}
+        <td><a href="{{ cafe[i] }}">Google Map</a></td>
+        {% else: %}
+        <td>{{cafe[i]}}</td>
+        {% endif %}
+        {% endfor %}
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<a href="{{url_for('home')}}" class="my-10">Return to homepage</a>
+{% endblock%}

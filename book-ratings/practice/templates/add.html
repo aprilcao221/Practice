@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Add Book</title>
+  </head>
+  <body>
+  {% if value: %}
+  <h1>You've added the book successfully</h1>
+  {% else: %}
+  <h1>Add a new book:</h1>
+  {% endif %}
+    <form action="./add" method="POST">
+      <label>Book Name</label>
+      <input type="text" name="title"/>
+      <label>Book Author</label>
+      <input type="text" name="author"/>
+      <label>Rating</label>
+      <input type="text" name="rating"/>
+      <button type="submit">Add Book</button>
+    </form>
+  </body>
+</html>
