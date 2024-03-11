@@ -1,3 +1,4 @@
+import os
 from datetime import date
 from flask import Flask, abort, render_template, redirect, url_for, flash, request
 from flask_bootstrap import Bootstrap5
@@ -9,9 +10,11 @@ from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String, Text, ForeignKey
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+import smtplib
 # Import your forms from the forms.py
 from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm
 from flask_gravatar import Gravatar
+
 
 
 
@@ -29,7 +32,7 @@ This will install the packages from the requirements.txt for this project.
 '''
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
+app.config['SECRET_KEY'] = os.environ.get("secret_key")
 ckeditor = CKEditor(app)
 Bootstrap5(app)
 
@@ -56,7 +59,7 @@ def load_user(user_id):
 # CREATE DATABASE
 class Base(DeclarativeBase):
     pass
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DB_URL")
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
@@ -247,10 +250,28 @@ def about():
     return render_template("about.html", logged_in=current_user.is_authenticated)
 
 
-@app.route("/contact")
+@app.route("/contact", methods=["POST", "GET"])
 def contact():
+    received = False
+    if request.method == "POST":
+        form_data = request.form
+        email = os.environ.get("email")
+        print(email)
+        app_code = os.environ.get("app_code")
+        with smtplib.SMTP("smtp.163.com", 25) as connection:
+            connection.starttls()
+            connection.login(email, app_code)
+            connection.sendmail(from_addr=email,
+                                to_addrs=form_data["email"],
+                                msg=f"subject: New contact\n\n You've got a new contact from {form_data['name']}\n"
+                                    f"Here's the contact info:\n"
+                                    f"phone number: {form_data['phone']}\n"
+                                    f"email: {form_data['email']}\n"
+                                    f"Here's the message:"
+                                    f"{form_data['message']}")
+        return render_template("contact.html", received=True)
     return render_template("contact.html", logged_in=current_user.is_authenticated)
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5005)
+    app.run(debug=False)
