@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.april.airtableform'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.april.airtableform'
+        minSdk 24
+        targetSdk 34
+        // CI passes the run number so each new APK installs as an update.
+        versionCode((project.findProperty('versionCode') ?: '1') as Integer)
+        versionName "1.0.${project.findProperty('versionCode') ?: '0'}"
+    }
+
+    // A fixed key committed with the project, so every APK built by CI has the
+    // same signature and can be installed over the previous one as an update.
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+}
