@@ -2,8 +2,13 @@ package com.april.airtableform;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
+import android.text.TextUtils;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -17,16 +22,22 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /** The data-entry form for the chosen table. Each submit creates one Airtable record. */
-public class MainActivity extends Activity implements FieldInput.LinkedRecords {
+public class MainActivity extends Activity implements FieldInput.Host {
 
     private static final int REQUEST_SETTINGS = 1;
+    private static final int REQUEST_CAMERA = 2;
+    private static final int REQUEST_GALLERY = 3;
+    private static final String STATE_PHOTO_FIELD = "photo_field";
+    private static final String STATE_CAMERA_FILE = "camera_file";
     private static final int MENU_SETTINGS = 1;
     private static final int MENU_REFRESH = 2;
     private static final int MENU_SEND_PENDING = 3;
@@ -39,13 +50,25 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
     private TextView pendingBanner;
     private ScrollView scroll;
     private boolean sendingPending;
+    /** The attachment field waiting for the camera or gallery, and the camera's file. */
+    private String photoFieldId;
+    private File cameraFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
         ui = new Ui(this);
+        if (savedInstanceState != null) {
+            photoFieldId = savedInstanceState.getString(STATE_PHOTO_FIELD);
+            String path = savedInstanceState.getString(STATE_CAMERA_FILE);
+            cameraFile = path == null ? null : new File(path);
+        }
         buildScreen();
+        if (savedInstanceState == null) {
+            JSONArray pending = prefs.pending();
+            Background.run(() -> PhotoStore.deleteUnused(this, pending), (n, e) -> {});
+        }
         if (!prefs.isConfigured()) {
             openSettings();
         }
@@ -58,11 +81,36 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putString(STATE_PHOTO_FIELD, photoFieldId);
+        if (cameraFile != null) outState.putString(STATE_CAMERA_FILE, cameraFile.getPath());
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_SETTINGS && resultCode == RESULT_OK) {
             linkedCache.clear();
             buildScreen();
+        } else if (requestCode == REQUEST_CAMERA) {
+            File captured = cameraFile;
+            cameraFile = null;
+            if (captured == null) return;
+            if (resultCode == RESULT_OK && captured.length() > 0) {
+                importPhotos(Collections.singletonList(Uri.fromFile(captured)), captured);
+            } else {
+                captured.delete();
+            }
+        } else if (requestCode == REQUEST_GALLERY && resultCode == RESULT_OK && data != null) {
+            List<Uri> uris = new ArrayList<>();
+            ClipData clip = data.getClipData();
+            if (clip != null) {
+                for (int i = 0; i < clip.getItemCount(); i++) uris.add(clip.getItemAt(i).getUri());
+            } else if (data.getData() != null) {
+                uris.add(data.getData());
+            }
+            if (!uris.isEmpty()) importPhotos(uris, null);
         }
     }
 
@@ -70,9 +118,78 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
         startActivityForResult(new Intent(this, SettingsActivity.class), REQUEST_SETTINGS);
     }
 
+    // ---- Photos -----------------------------------------------------------------------
+
+    @Override
+    public void pickPhotos(FieldInput.Attachments target, boolean camera) {
+        photoFieldId = target.fieldId;
+        try {
+            if (camera) {
+                cameraFile = PhotoStore.newCameraFile(this);
+                Uri output = PhotoProvider.uriFor(cameraFile);
+                Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                intent.putExtra(MediaStore.EXTRA_OUTPUT, output);
+                intent.setClipData(ClipData.newRawUri("photo", output));
+                intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivityForResult(intent, REQUEST_CAMERA);
+            } else {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*");
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                startActivityForResult(Intent.createChooser(intent, "Choose photos"),
+                        REQUEST_GALLERY);
+            }
+        } catch (ActivityNotFoundException e) {
+            cameraFile = null;
+            Toast.makeText(this, camera ? "No camera app found" : "No gallery app found",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Resizes the chosen pictures into app storage and adds them to the waiting field. */
+    private void importPhotos(List<Uri> uris, File deleteAfter) {
+        String fieldId = photoFieldId;
+        Toast.makeText(this, uris.size() == 1 ? "Adding photo…"
+                : "Adding " + uris.size() + " photos…", Toast.LENGTH_SHORT).show();
+        Background.run(() -> {
+            List<File> files = new ArrayList<>();
+            try {
+                for (Uri uri : uris) files.add(PhotoStore.importPhoto(this, uri));
+            } finally {
+                if (deleteAfter != null) deleteAfter.delete();
+            }
+            return files;
+        }, (files, error) -> {
+            if (error != null) {
+                showError(error);
+                return;
+            }
+            FieldInput.Attachments target = findAttachments(fieldId);
+            if (target == null) {
+                for (File file : files) file.delete();
+                return;
+            }
+            target.add(files);
+        });
+    }
+
+    private FieldInput.Attachments findAttachments(String fieldId) {
+        for (FieldInput input : inputs) {
+            if (input instanceof FieldInput.Attachments && input.fieldId.equals(fieldId)) {
+                return (FieldInput.Attachments) input;
+            }
+        }
+        return null;
+    }
+
     // ---- Building the form ------------------------------------------------------------
 
     private void buildScreen() {
+        for (FieldInput input : inputs) {
+            if (input instanceof FieldInput.Attachments) input.clear();
+        }
         inputs.clear();
         LinearLayout root = ui.column();
         scroll = new ScrollView(this);
@@ -138,7 +255,7 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
 
         if (!skipped.isEmpty()) {
             root.addView(ui.hint("Not on this form (filled in by Airtable, or not supported "
-                    + "yet): " + String.join(", ", skipped)));
+                    + "yet): " + TextUtils.join(", ", skipped)));
         }
     }
 
@@ -150,57 +267,84 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
     // ---- Submitting -------------------------------------------------------------------
 
     private void submit() {
-        JSONObject fields = new JSONObject();
+        JSONObject submission;
         try {
+            JSONObject fields = new JSONObject();
+            JSONArray photos = new JSONArray();
             for (FieldInput input : inputs) {
+                if (input instanceof FieldInput.Attachments) {
+                    Delivery.addPhotos(photos, input.fieldId,
+                            ((FieldInput.Attachments) input).files());
+                    continue;
+                }
                 Object value = input.value();
                 if (value != null) fields.put(input.fieldId, value);
             }
-        } catch (FieldInput.InvalidValue e) {
+            if (fields.length() == 0 && photos.length() == 0) {
+                Toast.makeText(this, "Fill in at least one field", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            submission = Delivery.newSubmission(prefs.baseId(), prefs.tableId(), fields, photos);
+        } catch (FieldInput.InvalidValue | JSONException e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        } catch (JSONException e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (fields.length() == 0) {
-            Toast.makeText(this, "Fill in at least one field", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        String baseId = prefs.baseId();
-        String tableId = prefs.tableId();
+        int photoCount = Delivery.photoCount(submission);
         submitButton.setEnabled(false);
-        submitButton.setText("Sending…");
-        Background.run(() -> new AirtableApi(prefs.token()).createRecord(baseId, tableId, fields),
-                (recordId, error) -> {
-                    submitButton.setEnabled(true);
-                    submitButton.setText("Submit to Airtable");
-                    if (error == null) {
-                        Toast.makeText(this, "Saved to Airtable ✓", Toast.LENGTH_SHORT).show();
-                        clearForm();
-                        sendPending(false);
-                    } else if (error instanceof IOException) {
-                        // No connection: keep the record on the phone and send it later.
-                        try {
-                            prefs.addPending(baseId, tableId, fields);
-                            clearForm();
-                            updatePendingBanner();
-                            Toast.makeText(this, "No connection. Saved on the phone; it will "
-                                    + "be sent when you're back online.", Toast.LENGTH_LONG).show();
-                        } catch (JSONException e) {
-                            showError(e);
-                        }
-                    } else {
-                        showError(error);
-                    }
-                });
+        submitButton.setText(photoCount == 0 ? "Sending…"
+                : "Sending (with " + photoCount + (photoCount == 1 ? " photo" : " photos")
+                        + ")…");
+        String token = prefs.token();
+        Background.run(() -> {
+            Delivery.send(new AirtableApi(token), submission);
+            return Boolean.TRUE;
+        }, (ok, error) -> {
+            submitButton.setEnabled(true);
+            submitButton.setText("Submit to Airtable");
+            if (error == null) {
+                Toast.makeText(this, "Saved to Airtable ✓", Toast.LENGTH_SHORT).show();
+                releasePhotosAndClear();
+                sendPending(false);
+            } else if (error instanceof IOException) {
+                // No connection: keep what is left on the phone and send it later.
+                prefs.putPending(submission);
+                releasePhotosAndClear();
+                updatePendingBanner();
+                Toast.makeText(this, "No connection. Saved on the phone; it will be sent "
+                        + "when you're back online.", Toast.LENGTH_LONG).show();
+            } else if (Delivery.recordCreated(submission)) {
+                // The record exists but a photo was refused: keep the photos queued.
+                prefs.putPending(submission);
+                releasePhotosAndClear();
+                updatePendingBanner();
+                showMessage("The record was saved, but a photo could not be uploaded. "
+                        + "It is kept on the phone to retry.\n\n" + Background.describe(error));
+            } else {
+                // Nothing was saved: leave the form as it is so it can be fixed.
+                showError(error);
+            }
+        });
+    }
+
+    /** Clears the form after its photos were handed over to a submission. */
+    private void releasePhotosAndClear() {
+        for (FieldInput input : inputs) {
+            if (input instanceof FieldInput.Attachments) {
+                ((FieldInput.Attachments) input).release();
+            }
+        }
+        clearForm();
     }
 
     private void showError(Exception error) {
+        showMessage(Background.describe(error));
+    }
+
+    private void showMessage(String message) {
         new AlertDialog.Builder(this)
                 .setTitle("Not saved")
-                .setMessage(Background.describe(error))
+                .setMessage(message)
                 .setPositiveButton("OK", null)
                 .show();
     }
@@ -219,8 +363,7 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
     /** Outcome of one pass over the offline queue. */
     private static final class PendingResult {
         int sent;
-        int left;
-        /** Records Airtable refused, e.g. because a field was deleted. */
+        /** Ids of submissions Airtable refused, e.g. because a field was deleted. */
         final List<String> rejected = new ArrayList<>();
         Exception lastError;
     }
@@ -239,23 +382,24 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
         Background.run(() -> {
             AirtableApi api = new AirtableApi(token);
             PendingResult result = new PendingResult();
-            List<String> sentItems = new ArrayList<>();
             for (int i = 0; i < pending.length(); i++) {
-                JSONObject item = pending.getJSONObject(i);
-                if (result.lastError instanceof IOException) break;
+                JSONObject submission = pending.getJSONObject(i);
+                String id = submission.optString("id");
                 try {
-                    api.createRecord(item.getString("baseId"), item.getString("tableId"),
-                            item.getJSONObject("fields"));
-                    sentItems.add(item.toString());
+                    Delivery.send(api, submission);
+                    prefs.removePending(id);
                     result.sent++;
                 } catch (AirtableApi.ApiException e) {
-                    result.rejected.add(item.toString());
+                    prefs.putPending(submission);
+                    result.rejected.add(id);
                     result.lastError = e;
                 } catch (IOException e) {
+                    // Still offline: keep any progress and stop for now.
+                    prefs.putPending(submission);
                     result.lastError = e;
+                    break;
                 }
             }
-            result.left = removeFromPending(sentItems);
             return result;
         }, (result, error) -> {
             sendingPending = false;
@@ -276,29 +420,17 @@ public class MainActivity extends Activity implements FieldInput.LinkedRecords {
                         .setMessage(Background.describe(result.lastError))
                         .setPositiveButton("Keep for later", null)
                         .setNegativeButton("Discard", (d, w) -> {
-                            removeFromPending(result.rejected);
+                            for (String id : result.rejected) {
+                                JSONObject removed = prefs.removePending(id);
+                                if (removed != null) Delivery.discard(removed);
+                            }
                             updatePendingBanner();
                         })
                         .show();
-            } else if (userAsked && result.left > 0 && result.lastError != null) {
+            } else if (userAsked && result.lastError != null) {
                 showError(result.lastError);
             }
         });
-    }
-
-    /** Removes the given queued records (compared as JSON text); returns how many remain. */
-    private int removeFromPending(List<String> items) {
-        synchronized (Prefs.class) {
-            JSONArray pending = prefs.pending();
-            JSONArray kept = new JSONArray();
-            List<String> toRemove = new ArrayList<>(items);
-            for (int i = 0; i < pending.length(); i++) {
-                Object item = pending.opt(i);
-                if (!toRemove.remove(String.valueOf(item))) kept.put(item);
-            }
-            prefs.savePending(kept);
-            return kept.length();
-        }
     }
 
     // ---- Linked records ---------------------------------------------------------------

@@ -6,6 +6,7 @@ import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.format.DateFormat;
 import android.view.View;
@@ -13,6 +14,8 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.Spinner;
@@ -21,6 +24,7 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -32,9 +36,13 @@ import java.util.Set;
 /** One Airtable field on the form: its input view and how to turn it into an API value. */
 abstract class FieldInput {
 
-    /** Loads the records of a linked table, for linked-record fields. */
-    interface LinkedRecords {
+    /** What the form's activity provides to inputs that need more than a view. */
+    interface Host {
+        /** Loads the records of a linked table, for linked-record fields. */
         void load(String tableId, Background.Callback<List<AirtableApi.RecordName>> callback);
+
+        /** Opens the camera or the gallery; chosen photos are passed to target.add(). */
+        void pickPhotos(Attachments target, boolean camera);
     }
 
     /** Thrown when what was typed cannot be sent, with a message for the user. */
@@ -63,7 +71,7 @@ abstract class FieldInput {
      * Creates the input for a field, or returns null for fields that cannot be
      * written (formulas, lookups, auto numbers...) or are not supported yet.
      */
-    static FieldInput create(Activity activity, JSONObject field, LinkedRecords linked) {
+    static FieldInput create(Activity activity, JSONObject field, Host host) {
         JSONObject options = field.optJSONObject("options");
         if (options == null) options = new JSONObject();
         switch (field.optString("type")) {
@@ -110,7 +118,9 @@ abstract class FieldInput {
                 return new DateInput(activity, field, true);
             case "multipleRecordLinks":
                 return new RecordLinks(activity, field, options.optString("linkedTableId"),
-                        options.optBoolean("prefersSingleRecordLink", false), linked);
+                        options.optBoolean("prefersSingleRecordLink", false), host);
+            case "multipleAttachments":
+                return new Attachments(activity, field, host);
             default:
                 return null;
         }
@@ -423,13 +433,13 @@ abstract class FieldInput {
     static final class RecordLinks extends Picker {
         private final String linkedTableId;
         private final boolean single;
-        private final LinkedRecords linked;
+        private final Host linked;
         /** Chosen record ids mapped to their names, in the order chosen. */
         private final Set<String> selectedIds = new LinkedHashSet<>();
         private final List<String> selectedNames = new ArrayList<>();
 
         RecordLinks(Activity activity, JSONObject field, String linkedTableId, boolean single,
-                    LinkedRecords linked) {
+                    Host linked) {
             super(activity, field, single ? "Choose a record…" : "Choose records…");
             this.linkedTableId = linkedTableId;
             this.single = single;
@@ -532,7 +542,7 @@ abstract class FieldInput {
         }
 
         private void refresh() {
-            showLabel(String.join(", ", selectedNames));
+            showLabel(TextUtils.join(", ", selectedNames));
         }
 
         @Override
@@ -547,6 +557,102 @@ abstract class FieldInput {
         void clear() {
             selectedIds.clear();
             selectedNames.clear();
+            refresh();
+        }
+    }
+
+    // ---- Photos -----------------------------------------------------------------------
+
+    /** Photos for an attachment field. They are uploaded after the record is created. */
+    static final class Attachments extends FieldInput {
+        private final Activity activity;
+        private final LinearLayout layout;
+        private final LinearLayout thumbnails;
+        private final TextView count;
+        private final List<File> photos = new ArrayList<>();
+
+        Attachments(Activity activity, JSONObject field, Host host) {
+            super(field);
+            this.activity = activity;
+            Ui ui = new Ui(activity);
+
+            layout = new LinearLayout(activity);
+            layout.setOrientation(LinearLayout.VERTICAL);
+
+            LinearLayout buttons = new LinearLayout(activity);
+            buttons.setOrientation(LinearLayout.HORIZONTAL);
+            Button camera = ui.button("Take photo");
+            camera.setOnClickListener(v -> host.pickPhotos(this, true));
+            Button gallery = ui.button("From gallery");
+            gallery.setOnClickListener(v -> host.pickPhotos(this, false));
+            LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            buttons.addView(camera, half);
+            buttons.addView(gallery, new LinearLayout.LayoutParams(half));
+            layout.addView(buttons);
+
+            HorizontalScrollView scroll = new HorizontalScrollView(activity);
+            thumbnails = new LinearLayout(activity);
+            thumbnails.setOrientation(LinearLayout.HORIZONTAL);
+            scroll.addView(thumbnails);
+            layout.addView(scroll);
+
+            count = ui.hint("");
+            layout.addView(count);
+            refresh();
+        }
+
+        void add(List<File> files) {
+            photos.addAll(files);
+            refresh();
+        }
+
+        /** The photos to upload. */
+        List<File> files() {
+            return new ArrayList<>(photos);
+        }
+
+        /** Forgets the photos without deleting them: they now belong to a submission. */
+        void release() {
+            photos.clear();
+            refresh();
+        }
+
+        private void refresh() {
+            Ui ui = new Ui(activity);
+            int size = ui.dp(88);
+            thumbnails.removeAllViews();
+            for (File photo : photos) {
+                ImageView image = new ImageView(activity);
+                image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                image.setImageBitmap(PhotoStore.thumbnail(photo, size));
+                image.setOnClickListener(v -> new AlertDialog.Builder(activity)
+                        .setMessage("Remove this photo?")
+                        .setPositiveButton("Remove", (d, w) -> {
+                            photos.remove(photo);
+                            photo.delete();
+                            refresh();
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show());
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(size, size);
+                params.setMargins(0, ui.dp(6), ui.dp(6), 0);
+                thumbnails.addView(image, params);
+            }
+            int n = photos.size();
+            count.setText(n == 0 ? "No photos yet"
+                    : n + (n == 1 ? " photo" : " photos") + " · tap one to remove it");
+        }
+
+        @Override View view() { return layout; }
+
+        /** Photos are not part of the record's fields; they are uploaded separately. */
+        @Override Object value() { return null; }
+
+        @Override
+        void clear() {
+            for (File photo : photos) photo.delete();
+            photos.clear();
             refresh();
         }
     }

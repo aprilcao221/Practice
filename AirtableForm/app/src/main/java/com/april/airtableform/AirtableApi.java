@@ -1,10 +1,14 @@
 package com.april.airtableform;
 
+import android.util.Base64;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -19,6 +23,7 @@ import java.util.List;
 final class AirtableApi {
 
     private static final String API_ROOT = "https://api.airtable.com/v0/";
+    private static final String CONTENT_ROOT = "https://content.airtable.com/v0/";
     /** Upper bound on linked records loaded into a picker. */
     private static final int MAX_LINKED_RECORDS = 2000;
 
@@ -79,6 +84,26 @@ final class AirtableApi {
         return request("POST", baseId + "/" + tableId, body).getString("id");
     }
 
+    /** Adds a JPEG to an attachment field of an existing record (max 5 MB). */
+    void uploadAttachment(String baseId, String recordId, String fieldId, File photo)
+            throws IOException, ApiException, JSONException {
+        byte[] bytes = new byte[(int) photo.length()];
+        try (InputStream in = new FileInputStream(photo)) {
+            int read = 0;
+            while (read < bytes.length) {
+                int n = in.read(bytes, read, bytes.length - read);
+                if (n < 0) throw new IOException("Photo file was cut short");
+                read += n;
+            }
+        }
+        JSONObject body = new JSONObject();
+        body.put("contentType", "image/jpeg");
+        body.put("filename", photo.getName());
+        body.put("file", Base64.encodeToString(bytes, Base64.NO_WRAP));
+        request("POST", CONTENT_ROOT + baseId + "/" + recordId + "/" + fieldId
+                + "/uploadAttachment", body);
+    }
+
     /** Lists records of a table by their primary field, for linked-record pickers. */
     List<RecordName> listRecordNames(String baseId, String tableId, String primaryFieldId)
             throws IOException, ApiException, JSONException {
@@ -124,11 +149,12 @@ final class AirtableApi {
 
     private JSONObject request(String method, String path, JSONObject body)
             throws IOException, ApiException, JSONException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(API_ROOT + path).openConnection();
+        String url = path.startsWith("https://") ? path : API_ROOT + path;
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         try {
             conn.setRequestMethod(method);
             conn.setConnectTimeout(15000);
-            conn.setReadTimeout(30000);
+            conn.setReadTimeout(60000);
             conn.setRequestProperty("Authorization", "Bearer " + token);
             if (body != null) {
                 byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);

@@ -90,18 +90,47 @@ final class Prefs {
         }
     }
 
-    void savePending(JSONArray pending) {
+    private void savePending(JSONArray pending) {
         sp.edit().putString(PENDING, pending.toString()).commit();
     }
 
-    void addPending(String baseId, String tableId, JSONObject fields) throws JSONException {
+    /** Adds a submission to the queue, or replaces the queued copy with the same id. */
+    void putPending(JSONObject submission) {
+        synchronized (Prefs.class) {
+            String id = submission.optString("id");
+            JSONArray pending = pending();
+            JSONArray updated = new JSONArray();
+            boolean replaced = false;
+            for (int i = 0; i < pending.length(); i++) {
+                JSONObject item = pending.optJSONObject(i);
+                if (item != null && id.equals(item.optString("id"))) {
+                    updated.put(submission);
+                    replaced = true;
+                } else {
+                    updated.put(item);
+                }
+            }
+            if (!replaced) updated.put(submission);
+            savePending(updated);
+        }
+    }
+
+    /** Removes the queued submission with this id, returning it (or null). */
+    JSONObject removePending(String id) {
         synchronized (Prefs.class) {
             JSONArray pending = pending();
-            pending.put(new JSONObject()
-                    .put("baseId", baseId)
-                    .put("tableId", tableId)
-                    .put("fields", fields));
-            savePending(pending);
+            JSONArray kept = new JSONArray();
+            JSONObject removed = null;
+            for (int i = 0; i < pending.length(); i++) {
+                JSONObject item = pending.optJSONObject(i);
+                if (removed == null && item != null && id.equals(item.optString("id"))) {
+                    removed = item;
+                } else {
+                    kept.put(item);
+                }
+            }
+            savePending(kept);
+            return removed;
         }
     }
 }

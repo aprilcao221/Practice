@@ -27,5 +27,11 @@
             android:exported="false"
             android:label="@string/settings"
             android:windowSoftInputMode="adjustResize" />
+
+        <provider
+            android:name=".PhotoProvider"
+            android:authorities="com.april.airtableform.photos"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

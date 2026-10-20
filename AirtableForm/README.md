@@ -44,18 +44,28 @@ only to `api.airtable.com`.
 | Date / date and time | Date (and time) picker; hold to clear |
 | Link to another record | Searchable list of the linked table's records |
 | User (single collaborator) | Collaborator's email |
+| Attachment | **Take photo** / **From gallery**, with thumbnails (tap one to remove it) |
 
 Fields Airtable fills in itself (formula, lookup, rollup, count, auto number,
-created/modified time) don't appear on the form. Neither do attachments and
-multiple-collaborator fields, which the app doesn't support yet. The form lists
-these fields at the bottom.
+created/modified time) don't appear on the form. Neither do multiple-collaborator
+fields, which the app doesn't support yet. The form lists these fields at the
+bottom.
+
+### Photos
+
+Photos are straightened, resized to at most 2048 px on the long edge and saved
+as JPEGs (usually well under 1 MB), which keeps them under Airtable's 5 MB
+upload limit. When you submit, the app creates the record first, then uploads
+the photos to it one at a time. Uploading needs no extra token scope beyond
+`data.records:write`.
 
 ## Offline
 
-If there is no connection when you tap **Submit**, the record is saved on the
-phone. The app sends it the next time you open the app or submit another
-record. You can also tap the orange banner, or use **Send saved records** in the
-menu. If Airtable rejects a saved record (for example, a field was deleted),
+If there is no connection when you tap **Submit**, the record and its photos are
+saved on the phone. The app sends them the next time you open the app or submit
+another record. You can also tap the orange banner, or use **Send saved
+records** in the menu. If the connection drops part way, the app remembers what
+was already sent and won't upload anything twice. If Airtable rejects a saved record (for example, a field was deleted),
 you choose whether to keep it or discard it.
 
 ## Build it yourself
